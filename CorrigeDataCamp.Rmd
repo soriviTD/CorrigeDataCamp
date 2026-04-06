@@ -13,6 +13,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(readr)
 library(writexl)
 library(tidyverse)
+library(readxl)
+library(dplyr)
 ```
 
 
@@ -31,6 +33,7 @@ for (i in 1:length(nom_carpetas)){
   certificate_pdf <- FALSE
   puntos_txt <- FALSE #Se asume que no no están ninguno de los dos documentos.
   puntos <- NA
+  nombre_puntos <- NA
 
   carpeta_direc <- list.files(path = nom_carpetas[i], full.names = TRUE)
   carpeta <- strsplit(carpeta_direc, '/')
@@ -74,4 +77,13 @@ length(variables) #Cantidad de nombres diferetes que toma el archivo de puntos
 #Se comprueba si hay algún elemento que no esté. Si da TRUE, habrá alguno faltante, si da FALSE, quiere decir que todos los alumnos han entregado los dos archivos.
 sum(puntos_general==FALSE)>0
 sum(certificate_general==FALSE)>0
+```
+
+```{r}
+alumnos <- read_xlsx("data/AlumnosTD25_26.xlsx")
+
+colnames(df)[1] <- 'Apellido(s)' #Se le pone el mismo nombre a la columna de los apellidos que en el nuevo archivo para poder unirlos mediante esta, ya que es la única columna que tienen en común.
+
+alumnos_notas <- left_join(alumnos, df)
+write_xlsx(alumnos_notas, "data/AlumnosNotas.xlsx")
 ```
