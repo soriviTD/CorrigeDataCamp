@@ -69,7 +69,6 @@ df <- df %>% arrange(apellidos)
 
 write_xlsx(df, "data/NotasRIntermedio.xlsx")
 
-#nombre_puntos_diferentes <- 
 variables <- str_extract_all(string=df$NomFile, pattern = '.+')|>unlist() |> table() |> as.data.frame() |> dplyr::arrange(desc(Freq))
 variables #Diferentes nombres que toma el archivo de puntos con su frecuencia
 length(variables) #Cantidad de nombres diferetes que toma el archivo de puntos
