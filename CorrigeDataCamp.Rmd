@@ -16,6 +16,8 @@ library(tidyverse)
 library(readxl)
 library(dplyr)
 library(pdftools)
+library(tesseract)
+library(magick)
 ```
 
 ```{r}
@@ -38,34 +40,53 @@ for (i in 1:length(nom_carpetas)){
   puntos_txt <- FALSE #Se asume que no no están ninguno de los dos documentos.
   puntos <- NA
   nombre_puntos <- NA
-  puntos_texto <- NA #Se resetea el valor para todos los campos a rellenar.
+  puntos_texto <- NA
+  puntos_texto_original <- NA
+  texto_xp <- NA 
+  img <- NA #Se resetea el valor para todos los campos a rellenar.
   
   carpeta_direc <- list.files(path = nom_carpetas[i], full.names = TRUE)
   carpeta <- strsplit(carpeta_direc, '/')
   apellidos <- strsplit(carpeta[[1]][[2]], ',')[[1]][[1]]
   df_apellidos <- c(df_apellidos, apellidos)
     
-  #print(carpeta_direc)
   for (j in 1:length(carpeta_direc)){
     nombre_archivo <- basename(carpeta_direc[j])
-    if (grepl("cert", nombre_archivo, ignore.case = TRUE)) {
+    if (grepl("cert|R_intermedio.pdf|IntermedioR.pdf", nombre_archivo, ignore.case = TRUE)) {
       certificate_pdf <- TRUE
     } else {
       puntos_txt <- TRUE
       puntos_direc <- carpeta_direc[j]
       nombre_puntos <- strsplit(puntos_direc, '/')[[1]][[3]]
       if (grepl('.pdf$', nombre_archivo)){
-        archivo_puntos <- pdf_text(puntos_direc)
-        puntos_texto <- paste(archivo_puntos, collapse = "\n")
+        if (grepl('puntosintermediate.pdf$', nombre_archivo)){
+          #Líneas 63-67 hechas con ayuda de IA.
+          img <- pdf_render_page(puntos_direc, page = 1, dpi = 200)
+          png::writePNG(img, "pagina.png")
+          img <- image_read("pagina.png")
+          img <- image_crop(img, "115x56+670+450")
+          img <- image_resize(img, "920x")
+          texto_xp <- ocr(img)
+          puntos <- str_extract(texto_xp, '[0-9]{2,}')
+          #Podría convertir toda la imagen a texto para ponerla en la columna de lo que contiene el archivo, pero dado que es una imagen, me parece que lo más adecuado es no poner nada.
+        } else {
+          archivo_puntos <- pdf_text(puntos_direc)
+          puntos_texto <- paste(archivo_puntos, collapse = "\n")
+          puntos_texto_original <- puntos_texto
+        }
       } else {
         archivo_puntos <- read_csv(puntos_direc, col_names = FALSE, show_col_types = FALSE)
-        puntos_texto <- trimws(paste(readLines(puntos_direc, warn=FALSE), collapse = '\n'))
+        puntos_texto <- paste(readLines(puntos_direc, warn=FALSE), collapse = '\n')
+        puntos_texto_original <- trimws(puntos_texto)
+        puntos_texto <- gsub('[,. ]', '', puntos_texto_original)
       }
-      puntos <- str_extract(puntos_texto, '[0-9]{2,}')
+      if (!grepl('puntosintermediate.pdf$', nombre_archivo)){
+        puntos <- str_extract(puntos_texto, '[0-9]{2,}')
+      }
     }
   }
   df_puntos <- c(df_puntos, puntos)
-  df_puntostexto <- c(df_puntostexto, puntos_texto)
+  df_puntostexto <- c(df_puntostexto, puntos_texto_original)
   df_nombrepuntos <- c(df_nombrepuntos, nombre_puntos)
   puntos_general <- c(puntos_general, puntos_txt)
   certificate_general <- c(certificate_general, certificate_pdf)
@@ -77,19 +98,18 @@ df_nombrepuntos <- as.character(unlist(df_nombrepuntos))
 df_puntostexto <- as.character(df_puntostexto)
 
 df <- data.frame(apellidos = df_apellidos, puntos = df_puntos, NomFile = df_nombrepuntos, Puntos = df_puntostexto, stringsAsFactors = FALSE)
-df <- df %>% arrange(apellidos)
-
-View(df)
+evalua_df <- df %>% arrange(apellidos)
 
 #Se comprueba si hay algún elemento que no esté. Si da TRUE, habrá algún alumno que no lo habrá entregado, si da FALSE, quiere decir que todoslo han entregado. Esto es, en cualquier caso, sobre los alumnos que han realizado entregas (no de todos los alumnos matriculados en la asignatura ya que en este punto todavía no se ha hecho uso del archivo con dicha información).
-sum(puntos_general==FALSE)#>0
-sum(certificate_general==FALSE)#>0
+sum(puntos_general==FALSE)>0
+sum(puntos_general==FALSE) #Hay dos personas que no han entregado el archivo de puntos.
+sum(certificate_general==FALSE)>0 #Todos lo han entregado.
 ```
 
 ```{r}
-write_xlsx(df, "data/NotasRIntermedio.xlsx")
+write_xlsx(evalua_df, "data/NotasRIntermedio.xlsx")
 
-variables <- str_extract_all(string=df$NomFile, pattern = '.+')|>unlist() |> table() |> as.data.frame() |> dplyr::arrange(desc(Freq))
+variables <- str_extract_all(string=evalua_df$NomFile, pattern = '.+')|>unlist() |> table() |> as.data.frame() |> dplyr::arrange(desc(Freq))
 variables #Diferentes nombres que toma el archivo de puntos con su frecuencia
 length(variables) #Cantidad de nombres diferetes que toma el archivo de puntos
 ```
@@ -97,8 +117,8 @@ length(variables) #Cantidad de nombres diferetes que toma el archivo de puntos
 ```{r}
 alumnos <- read_xlsx("data/AlumnosTD25_26.xlsx")
 
-colnames(df)[1] <- 'Apellido(s)' #Se le pone el mismo nombre a la columna de los apellidos que en el nuevo archivo para poder unirlos mediante esta, ya que es la única columna que tienen en común.
+colnames(evalua_df)[1] <- 'Apellido(s)' #Se le pone el mismo nombre a la columna de los apellidos que en el nuevo archivo para poder unirlos mediante esta, ya que es la única columna que tienen en común.
 
-alumnos_notas <- full_join(alumnos, df)
+alumnos_notas <- full_join(alumnos, evalua_df)
 write_xlsx(alumnos_notas, "data/AlumnosNotas.xlsx")
 ```
